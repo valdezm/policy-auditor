@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: policy-auditor-db
+    environment:
+      POSTGRES_USER: ${DB_USER:-policyauditor}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-secure_password}
+      POSTGRES_DB: ${DB_NAME:-policy_auditor}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-policyauditor}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: policy-auditor-backend
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-policyauditor}:${DB_PASSWORD:-secure_password}@postgres:5432/${DB_NAME:-policy_auditor}
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-here}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - /mnt/c/Users/markv/Downloads/PNPs:/data/policies:ro
+      - /mnt/c/Users/markv/Downloads/APL\ RTs:/data/audits:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: policy-auditor-frontend
+    environment:
+      VITE_API_URL: ${API_URL:-http://localhost:8000}
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    command: npm run start
+
+volumes:
+  postgres_data:
