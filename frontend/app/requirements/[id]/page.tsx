@@ -56,6 +56,7 @@ export default function RequirementDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedPolicy, setSelectedPolicy] = useState<PolicyDetails | null>(null);
   const [policyModalOpen, setPolicyModalOpen] = useState(false);
+  const [filterType, setFilterType] = useState<string>('all');
 
   useEffect(() => {
     if (requirementId) {
@@ -162,25 +163,37 @@ export default function RequirementDetailPage() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-4 gap-4">
-              <div className="text-center">
+              <div 
+                className={`text-center cursor-pointer hover:bg-green-50 p-2 rounded transition-colors ${filterType === 'compliant' ? 'bg-green-100 ring-2 ring-green-500' : ''}`}
+                onClick={() => setFilterType(filterType === 'compliant' ? 'all' : 'compliant')}
+              >
                 <div className="text-2xl font-bold text-green-600">
                   {analysis.analyses.filter(a => a.is_compliant).length}
                 </div>
                 <p className="text-sm text-gray-600">Fully Compliant</p>
               </div>
-              <div className="text-center">
+              <div 
+                className={`text-center cursor-pointer hover:bg-yellow-50 p-2 rounded transition-colors ${filterType === 'reference' ? 'bg-yellow-100 ring-2 ring-yellow-500' : ''}`}
+                onClick={() => setFilterType(filterType === 'reference' ? 'all' : 'reference')}
+              >
                 <div className="text-2xl font-bold text-yellow-600">
                   {analysis.analyses.filter(a => !a.is_compliant && a.has_reference).length}
                 </div>
                 <p className="text-sm text-gray-600">References Only</p>
               </div>
-              <div className="text-center">
+              <div 
+                className={`text-center cursor-pointer hover:bg-orange-50 p-2 rounded transition-colors ${filterType === 'partial' ? 'bg-orange-100 ring-2 ring-orange-500' : ''}`}
+                onClick={() => setFilterType(filterType === 'partial' ? 'all' : 'partial')}
+              >
                 <div className="text-2xl font-bold text-orange-600">
                   {analysis.analyses.filter(a => !a.is_compliant && !a.has_reference && a.compliance_score > 0).length}
                 </div>
                 <p className="text-sm text-gray-600">Partial Coverage</p>
               </div>
-              <div className="text-center">
+              <div 
+                className={`text-center cursor-pointer hover:bg-red-50 p-2 rounded transition-colors ${filterType === 'none' ? 'bg-red-100 ring-2 ring-red-500' : ''}`}
+                onClick={() => setFilterType(filterType === 'none' ? 'all' : 'none')}
+              >
                 <div className="text-2xl font-bold text-red-600">
                   {analysis.analyses.filter(a => a.compliance_score === 0).length}
                 </div>
@@ -192,7 +205,16 @@ export default function RequirementDetailPage() {
 
         {/* Policy Analyses */}
         <div className="space-y-6">
-          {analysis.analyses.map((policyAnalysis) => (
+          {analysis.analyses
+            .filter((policyAnalysis) => {
+              if (filterType === 'all') return true;
+              if (filterType === 'compliant') return policyAnalysis.is_compliant;
+              if (filterType === 'reference') return !policyAnalysis.is_compliant && policyAnalysis.has_reference;
+              if (filterType === 'partial') return !policyAnalysis.is_compliant && !policyAnalysis.has_reference && policyAnalysis.compliance_score > 0;
+              if (filterType === 'none') return policyAnalysis.compliance_score === 0;
+              return true;
+            })
+            .map((policyAnalysis) => (
             <Card key={policyAnalysis.policy_code} 
                   className={policyAnalysis.is_compliant ? 'border-green-200' : 
                             policyAnalysis.has_reference ? 'border-yellow-200' : 

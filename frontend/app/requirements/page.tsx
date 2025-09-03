@@ -170,7 +170,13 @@ export default function RequirementsDashboard() {
         
         {/* Summary Stats */}
         <div className="grid grid-cols-1 md:grid-cols-7 gap-4 mb-8">
-          <Card>
+          <Card 
+            className={`cursor-pointer hover:shadow-lg transition-shadow ${filterType === 'all' ? 'ring-2 ring-blue-500' : ''}`}
+            onClick={() => {
+              setFilterType('all');
+              setFilterAPL('all');
+            }}
+          >
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">Total</CardTitle>
             </CardHeader>
@@ -179,7 +185,10 @@ export default function RequirementsDashboard() {
             </CardContent>
           </Card>
           
-          <Card className="border-green-200">
+          <Card 
+            className={`border-green-200 cursor-pointer hover:shadow-lg transition-shadow ${filterType === 'full_compliance' ? 'ring-2 ring-green-500' : ''}`}
+            onClick={() => setFilterType('full_compliance')}
+          >
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">Full Compliance</CardTitle>
             </CardHeader>
@@ -190,7 +199,10 @@ export default function RequirementsDashboard() {
             </CardContent>
           </Card>
           
-          <Card className="border-yellow-200">
+          <Card 
+            className={`border-yellow-200 cursor-pointer hover:shadow-lg transition-shadow ${filterType === 'partial_compliance' ? 'ring-2 ring-yellow-500' : ''}`}
+            onClick={() => setFilterType('partial_compliance')}
+          >
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">Partial</CardTitle>
             </CardHeader>
@@ -201,7 +213,10 @@ export default function RequirementsDashboard() {
             </CardContent>
           </Card>
           
-          <Card className="border-blue-200">
+          <Card 
+            className={`border-blue-200 cursor-pointer hover:shadow-lg transition-shadow ${filterType === 'reference_only' ? 'ring-2 ring-blue-500' : ''}`}
+            onClick={() => setFilterType('reference_only')}
+          >
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">Reference Only</CardTitle>
             </CardHeader>
@@ -212,7 +227,10 @@ export default function RequirementsDashboard() {
             </CardContent>
           </Card>
           
-          <Card className="border-purple-200">
+          <Card 
+            className={`border-purple-200 cursor-pointer hover:shadow-lg transition-shadow ${filterType === 'related' ? 'ring-2 ring-purple-500' : ''}`}
+            onClick={() => setFilterType('related')}
+          >
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">Related</CardTitle>
             </CardHeader>
@@ -223,7 +241,10 @@ export default function RequirementsDashboard() {
             </CardContent>
           </Card>
           
-          <Card className="border-red-200">
+          <Card 
+            className={`border-red-200 cursor-pointer hover:shadow-lg transition-shadow ${filterType === 'no_coverage' ? 'ring-2 ring-red-500' : ''}`}
+            onClick={() => setFilterType('no_coverage')}
+          >
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">No Coverage</CardTitle>
             </CardHeader>
