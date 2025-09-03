@@ -1,32 +1,20 @@
 """
-Database configuration and session management
+SQLite database configuration for quick prototype
+No PostgreSQL needed!
 """
 import os
 from typing import Generator
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
-from dotenv import load_dotenv
 
-load_dotenv()
-
-# Database URL from environment
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    f"postgresql://{os.getenv('DB_USER', 'policyauditor')}:"
-    f"{os.getenv('DB_PASSWORD', 'secure_password')}@"
-    f"{os.getenv('DB_HOST', '192.168.49.29')}:"
-    f"{os.getenv('DB_PORT', '5432')}/"
-    f"{os.getenv('DB_NAME', 'policy_auditor')}"
-)
+# Use SQLite for simplicity
+DATABASE_URL = "sqlite:///./policy_auditor.db"
 
 # Create engine
 engine = create_engine(
     DATABASE_URL,
-    pool_size=20,
-    max_overflow=40,
-    pool_pre_ping=True,
-    echo=False
+    connect_args={"check_same_thread": False}  # Needed for SQLite
 )
 
 # Session factory
@@ -51,4 +39,7 @@ def init_db():
     """
     Initialize database tables
     """
+    # Import models to ensure they're registered
+    from . import models
     Base.metadata.create_all(bind=engine)
+    print("✅ Database tables created!")

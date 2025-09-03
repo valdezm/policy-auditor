@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from enum import Enum
 from sqlalchemy.orm import Session
 
-from ..models.models import Policy, AuditRequirement, AuditCriteria
+from models.models import Policy, AuditRequirement, AuditCriteria
 
 logger = logging.getLogger(__name__)
 

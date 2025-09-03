@@ -9,12 +9,12 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
-from ..models.models import (
+from models.models import (
     Policy, AuditRequirement, PolicySection, AuditCriteria,
     Organization, PolicyStatus, AuditSeverity
 )
-from ..models.database import get_db
-from ..utils.pdf_extractor import PDFExtractor, DocumentProcessor
+from models.database import get_db
+from utils.pdf_extractor import PDFExtractor, DocumentProcessor
 
 logger = logging.getLogger(__name__)
 

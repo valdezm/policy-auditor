@@ -7,6 +7,9 @@ import os
 import sys
 import logging
 from pathlib import Path
+# Add parent directory to path for imports
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 

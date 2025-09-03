@@ -71,7 +71,7 @@ class Policy(Base):
     file_path = Column(String(500))
     file_hash = Column(String(64))
     extracted_text = Column(Text)
-    metadata = Column(JSONB)
+    meta_data = Column("metadata", JSONB)
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
     
@@ -98,7 +98,7 @@ class AuditRequirement(Base):
     file_path = Column(String(500))
     file_hash = Column(String(64))
     extracted_text = Column(Text)
-    metadata = Column(JSONB)
+    meta_data = Column("metadata", JSONB)
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
     
@@ -119,7 +119,7 @@ class PolicySection(Base):
     content = Column(Text)
     parent_section_id = Column(UUID(as_uuid=True), ForeignKey("policy_sections.id"))
     order_index = Column(Integer)
-    metadata = Column(JSONB)
+    meta_data = Column("metadata", JSONB)
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     
     # Relationships
@@ -137,7 +137,7 @@ class AuditCriteria(Base):
     validation_rule = Column(Text)
     weight = Column(DECIMAL(3, 2), default=1.0)
     is_automated = Column(Boolean, default=False)
-    metadata = Column(JSONB)
+    meta_data = Column("metadata", JSONB)
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     
     # Relationships
@@ -160,7 +160,7 @@ class ComplianceCheck(Base):
     reviewed_by = Column(String(255))
     reviewed_at = Column(TIMESTAMP(timezone=True))
     automated_check = Column(Boolean, default=False)
-    metadata = Column(JSONB)
+    meta_data = Column("metadata", JSONB)
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
     
@@ -238,4 +238,4 @@ class Report(Base):
     generated_by = Column(String(255))
     file_path = Column(String(500))
     file_format = Column(String(20))
-    metadata = Column(JSONB)
+    meta_data = Column("metadata", JSONB)

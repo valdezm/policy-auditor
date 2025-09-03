@@ -11,15 +11,24 @@ check_port() {
 }
 
 # Step 1: Install dependencies
-echo "📦 Installing Python dependencies..."
-pip install -q fastapi uvicorn pdfplumber PyPDF2 pymupdf sqlalchemy psycopg2-binary 2>/dev/null
+echo "📦 Checking Python dependencies..."
+# Check if pip is installed
+if ! python3 -m pip --version &>/dev/null; then
+    echo "   Installing pip..."
+    sudo apt-get update && sudo apt-get install -y python3-pip
+fi
+
+echo "   Installing required packages..."
+python3 -m pip install --user fastapi uvicorn pdfplumber PyPDF2 pymupdf sqlalchemy psycopg2-binary 2>/dev/null || {
+    echo "   Some packages may not have installed. Continuing anyway..."
+}
 
 # Step 2: Run batch ingestion
 echo ""
 echo "📥 Ingesting all policies and RT APLs into database..."
 echo "   This may take a few minutes on first run..."
 cd backend
-python ingest_all.py
+python3 ingest_all.py
 
 # Step 3: Start the API server
 echo ""
@@ -27,7 +36,7 @@ echo "🌐 Starting API server on port 8000..."
 if check_port 8000; then
     echo "   Port 8000 is already in use. Skipping API startup."
 else
-    python api.py &
+    python3 api.py &
     API_PID=$!
     echo "   API running with PID: $API_PID"
 fi
