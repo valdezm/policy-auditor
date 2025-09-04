@@ -10,6 +10,9 @@ from pydantic import BaseModel
 from models.database import get_db, init_db
 from core.enhanced_coverage_analyzer import EnhancedCoverageAnalyzer, CoverageType
 from core.policy_analyzer import PolicyAnalyzer, APL23012Analyzer
+from core.enhanced_policy_analyzer import EnhancedPolicyAnalyzer
+from services.ai_validator import AIValidationService
+from models.models import AIValidationResult, Policy, AuditRequirement
 
 
 app = FastAPI(title="Policy Auditor API v2")
@@ -31,6 +34,35 @@ class ManualReviewUpdate(BaseModel):
     policy_references: List[str]
     reviewer_notes: str
     is_verified: bool
+
+
+class AIValidationRequest(BaseModel):
+    """Request model for AI validation"""
+    policy_id: str
+    requirement_id: str
+    requirement_text: str
+    regulation_reference: str
+
+
+class AIValidationResponse(BaseModel):
+    """Response model for AI validation"""
+    validation_id: str
+    policy_id: str
+    requirement_id: str
+    compliance_rating: str
+    confidence_level: str
+    confidence_score: float
+    reasoning: str
+    specific_findings: List[str]
+    missing_elements: List[str]
+    policy_strengths: List[str]
+    recommendations: List[str]
+    relevant_policy_excerpts: List[str]
+    regulatory_interpretation: str
+    risk_assessment: str
+    priority_level: str
+    validation_date: str
+    is_human_reviewed: bool
 
 
 @app.on_event("startup")
@@ -264,6 +296,79 @@ def get_requirement_analysis(requirement_id: str, db: Session = Depends(get_db))
     }
 
 
+@app.get("/api/v2/requirements/{requirement_id}/enhanced-analysis")
+def get_enhanced_requirement_analysis(requirement_id: str, db: Session = Depends(get_db)):
+    """
+    Get enhanced policy analysis with semantic context understanding
+    Uses the new EnhancedPolicyAnalyzer for better accuracy
+    """
+    # First get the requirement details
+    from sqlalchemy import text
+    
+    req_query = text("""
+        SELECT 
+            ar.apl_code,
+            ar.title as apl_title,
+            ac.criteria_code,
+            ac.criteria_text,
+            ac.validation_rule
+        FROM audit_criteria ac
+        JOIN audit_requirements ar ON ar.id = ac.audit_requirement_id
+        WHERE ac.id = :req_id
+    """)
+    
+    req_result = db.execute(req_query, {"req_id": requirement_id}).fetchone()
+    if not req_result:
+        raise HTTPException(status_code=404, detail="Requirement not found")
+    
+    # Use the enhanced analyzer
+    enhanced_analyzer = EnhancedPolicyAnalyzer(db)
+    analyses = enhanced_analyzer.analyze_requirement_compliance(requirement_id)
+    
+    # Also get policy IDs for each analysis
+    from models.models import Policy
+    
+    return {
+        'requirement_id': requirement_id,
+        'apl_code': req_result.apl_code,
+        'apl_title': req_result.apl_title,
+        'section_code': req_result.criteria_code or 'Main',
+        'requirement_text': req_result.criteria_text,
+        'validation_rule': req_result.validation_rule,
+        'analyzer_version': 'enhanced',
+        'total_policies_analyzed': len(analyses),
+        'compliant_policies': sum(1 for a in analyses if a.is_compliant),
+        'high_confidence_analyses': sum(1 for a in analyses if a.confidence_level > 0.8),
+        'analyses': [
+            {
+                'policy_id': str(db.query(Policy).filter(Policy.policy_code == a.policy_code).first().id) if db.query(Policy).filter(Policy.policy_code == a.policy_code).first() else None,
+                'policy_code': a.policy_code,
+                'policy_title': a.policy_title,
+                'compliance_score': a.compliance_score,
+                'confidence_level': a.confidence_level,
+                'is_compliant': a.is_compliant,
+                'has_primary_reference': a.has_primary_reference,
+                'has_cross_references': a.has_cross_references,
+                'missing_elements': a.missing_elements,
+                'found_elements': a.found_elements,
+                'explanation': a.explanation,
+                'recommendations': a.recommendations,
+                'contextual_excerpts': [
+                    {
+                        'text': e.text,
+                        'context': e.context,
+                        'relevance_score': e.relevance_score,
+                        'matched_elements': e.matched_elements,
+                        'surrounding_keywords': e.surrounding_keywords
+                    }
+                    for e in a.contextual_excerpts[:5]  # Top 5 excerpts
+                ]
+            }
+            for a in analyses
+        ]
+    }
+
+
 @app.get("/api/v2/apl/23-012/detailed-analysis")
 def get_apl_23012_analysis(db: Session = Depends(get_db)):
     """
@@ -315,14 +420,20 @@ def get_policy_coverage(policy_code: str, db: Session = Depends(get_db)):
 @app.get("/api/v2/policies/{policy_id}")
 def get_policy_by_id(policy_id: str, db: Session = Depends(get_db)):
     """
-    Get full policy details by ID
+    Get full policy details by ID or code
     """
     from models.models import Policy
     from sqlalchemy import text
     
+    # First try to find by ID
     policy = db.query(Policy).filter(Policy.id == policy_id).first()
+    
+    # If not found, try by code
     if not policy:
-        raise HTTPException(status_code=404, detail="Policy not found")
+        policy = db.query(Policy).filter(Policy.policy_code == policy_id).first()
+    
+    if not policy:
+        raise HTTPException(status_code=404, detail=f"Policy not found: {policy_id}")
     
     return {
         'policy_id': policy.id,
@@ -333,6 +444,243 @@ def get_policy_by_id(policy_id: str, db: Session = Depends(get_db)):
         'file_size': len(policy.extracted_text) if policy.extracted_text else 0,
         'created_at': policy.created_at.isoformat() if policy.created_at else None
     }
+
+
+@app.post("/api/v2/ai-validation/validate", response_model=AIValidationResponse)
+def validate_policy_with_ai(
+    request: AIValidationRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Validate a policy against a requirement using AI
+    """
+    import time
+    import os
+    from datetime import datetime
+    from models.models import AuditCriteria
+    
+    # Get policy and requirement details
+    policy = db.query(Policy).filter(Policy.id == request.policy_id).first()
+    if not policy:
+        # Try to find policy by code if ID fails
+        policy = db.query(Policy).filter(Policy.policy_code == request.policy_id).first()
+        if not policy:
+            raise HTTPException(status_code=404, detail=f"Policy not found: {request.policy_id}")
+    
+    # First try to find as an AuditCriteria (which is what the frontend sends)
+    audit_criteria = db.query(AuditCriteria).filter(AuditCriteria.id == request.requirement_id).first()
+    if audit_criteria:
+        # Get the parent AuditRequirement
+        audit_req = db.query(AuditRequirement).filter(
+            AuditRequirement.id == audit_criteria.audit_requirement_id
+        ).first()
+        # Use criteria text if available
+        if audit_criteria.criteria_text:
+            request.requirement_text = audit_criteria.criteria_text
+    else:
+        # Try direct AuditRequirement lookup
+        audit_req = db.query(AuditRequirement).filter(AuditRequirement.id == request.requirement_id).first()
+        
+    if not audit_req:
+        raise HTTPException(status_code=404, detail=f"Audit requirement not found: {request.requirement_id}")
+    
+    # Check if validation already exists
+    existing_validation = db.query(AIValidationResult).filter(
+        AIValidationResult.policy_id == policy.id,
+        AIValidationResult.audit_requirement_id == audit_req.id,
+        AIValidationResult.requirement_text == request.requirement_text
+    ).first()
+    
+    if existing_validation:
+        return _format_validation_response(existing_validation)
+    
+    # Initialize AI validation service
+    ai_service = AIValidationService(api_key=os.getenv("OPENAI_API_KEY"))
+    
+    # Perform AI validation
+    start_time = time.time()
+    try:
+        validation_result = ai_service.validate_policy_compliance(
+            policy_text=policy.extracted_text or "",
+            requirement_text=request.requirement_text,
+            regulation_reference=request.regulation_reference,
+            requirement_context={
+                'apl_code': audit_req.apl_code,
+                'category': audit_req.category,
+                'severity': audit_req.severity.value if audit_req.severity else None
+            }
+        )
+        processing_time = int((time.time() - start_time) * 1000)
+        
+        # Save validation result to database
+        db_validation = AIValidationResult(
+            policy_id=policy.id,
+            audit_requirement_id=audit_req.id,
+            requirement_text=request.requirement_text,
+            regulation_reference=request.regulation_reference,
+            compliance_rating=validation_result.compliance_rating.value,
+            confidence_level=validation_result.confidence_level.value,
+            confidence_score=validation_result.confidence_score,
+            reasoning=validation_result.reasoning,
+            specific_findings=validation_result.specific_findings,
+            missing_elements=validation_result.missing_elements,
+            policy_strengths=validation_result.policy_strengths,
+            recommendations=validation_result.recommendations,
+            relevant_policy_excerpts=validation_result.relevant_policy_excerpts,
+            regulatory_interpretation=validation_result.regulatory_interpretation,
+            risk_assessment=validation_result.risk_assessment,
+            priority_level=validation_result.priority_level,
+            processing_time_ms=processing_time
+        )
+        
+        db.add(db_validation)
+        db.commit()
+        db.refresh(db_validation)
+        
+        return _format_validation_response(db_validation)
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"AI validation failed: {str(e)}"
+        )
+
+
+@app.get("/api/v2/ai-validation/{validation_id}", response_model=AIValidationResponse)
+def get_ai_validation(validation_id: str, db: Session = Depends(get_db)):
+    """
+    Get a specific AI validation result
+    """
+    validation = db.query(AIValidationResult).filter(AIValidationResult.id == validation_id).first()
+    if not validation:
+        raise HTTPException(status_code=404, detail="AI validation not found")
+    
+    return _format_validation_response(validation)
+
+
+@app.get("/api/v2/ai-validation/policy/{policy_id}")
+def get_policy_ai_validations(policy_id: str, db: Session = Depends(get_db)):
+    """
+    Get all AI validation results for a specific policy
+    """
+    validations = db.query(AIValidationResult).filter(
+        AIValidationResult.policy_id == policy_id
+    ).all()
+    
+    return {
+        'policy_id': policy_id,
+        'total_validations': len(validations),
+        'validations': [_format_validation_response(v) for v in validations]
+    }
+
+
+@app.get("/api/v2/ai-validation/requirement/{requirement_id}")
+def get_requirement_ai_validations(requirement_id: str, db: Session = Depends(get_db)):
+    """
+    Get all AI validation results for a specific requirement
+    """
+    validations = db.query(AIValidationResult).filter(
+        AIValidationResult.audit_requirement_id == requirement_id
+    ).all()
+    
+    return {
+        'requirement_id': requirement_id,
+        'total_validations': len(validations),
+        'validations': [_format_validation_response(v) for v in validations]
+    }
+
+
+@app.post("/api/v2/ai-validation/{validation_id}/review")
+def update_ai_validation_review(
+    validation_id: str,
+    review_notes: str,
+    override_rating: Optional[str] = None,
+    reviewer_name: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Add human review to an AI validation result
+    """
+    validation = db.query(AIValidationResult).filter(AIValidationResult.id == validation_id).first()
+    if not validation:
+        raise HTTPException(status_code=404, detail="AI validation not found")
+    
+    # Update review fields
+    validation.is_human_reviewed = True
+    validation.human_review_notes = review_notes
+    validation.reviewed_by = reviewer_name
+    validation.reviewed_at = datetime.utcnow()
+    
+    if override_rating:
+        from models.models import AIValidationComplianceRating
+        try:
+            validation.human_override_rating = AIValidationComplianceRating(override_rating)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid override rating")
+    
+    db.commit()
+    db.refresh(validation)
+    
+    return _format_validation_response(validation)
+
+
+@app.get("/api/v2/ai-validation/stats")
+def get_ai_validation_stats(db: Session = Depends(get_db)):
+    """
+    Get statistics about AI validations
+    """
+    from sqlalchemy import func
+    from models.models import AIValidationComplianceRating, AIValidationConfidenceLevel
+    
+    total_validations = db.query(AIValidationResult).count()
+    
+    # Compliance rating distribution
+    rating_stats = db.query(
+        AIValidationResult.compliance_rating,
+        func.count(AIValidationResult.id).label('count')
+    ).group_by(AIValidationResult.compliance_rating).all()
+    
+    # Confidence level distribution
+    confidence_stats = db.query(
+        AIValidationResult.confidence_level,
+        func.count(AIValidationResult.id).label('count')
+    ).group_by(AIValidationResult.confidence_level).all()
+    
+    # Human review status
+    human_reviewed = db.query(AIValidationResult).filter(
+        AIValidationResult.is_human_reviewed == True
+    ).count()
+    
+    return {
+        'total_validations': total_validations,
+        'human_reviewed': human_reviewed,
+        'human_review_rate': round(human_reviewed / total_validations * 100, 2) if total_validations > 0 else 0,
+        'compliance_distribution': {stat.compliance_rating: stat.count for stat in rating_stats},
+        'confidence_distribution': {stat.confidence_level: stat.count for stat in confidence_stats}
+    }
+
+
+def _format_validation_response(validation: AIValidationResult) -> AIValidationResponse:
+    """Helper function to format validation response"""
+    return AIValidationResponse(
+        validation_id=str(validation.id),
+        policy_id=str(validation.policy_id),
+        requirement_id=str(validation.audit_requirement_id),
+        compliance_rating=validation.human_override_rating or validation.compliance_rating,
+        confidence_level=validation.confidence_level,
+        confidence_score=float(validation.confidence_score),
+        reasoning=validation.reasoning or "",
+        specific_findings=validation.specific_findings or [],
+        missing_elements=validation.missing_elements or [],
+        policy_strengths=validation.policy_strengths or [],
+        recommendations=validation.recommendations or [],
+        relevant_policy_excerpts=validation.relevant_policy_excerpts or [],
+        regulatory_interpretation=validation.regulatory_interpretation or "",
+        risk_assessment=validation.risk_assessment or "",
+        priority_level=validation.priority_level or "medium",
+        validation_date=validation.validation_date.isoformat() if validation.validation_date else "",
+        is_human_reviewed=validation.is_human_reviewed
+    )
 
 
 if __name__ == "__main__":

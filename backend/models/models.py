@@ -239,3 +239,64 @@ class Report(Base):
     file_path = Column(String(500))
     file_format = Column(String(20))
     meta_data = Column("metadata", JSONB)
+
+
+class AIValidationComplianceRating(str, enum.Enum):
+    FULLY_COMPLIANT = "fully_compliant"
+    PARTIALLY_COMPLIANT = "partially_compliant" 
+    NON_COMPLIANT = "non_compliant"
+    UNCLEAR = "unclear"
+    NOT_APPLICABLE = "not_applicable"
+
+
+class AIValidationConfidenceLevel(str, enum.Enum):
+    HIGH = "high"      # 80-100%
+    MEDIUM = "medium"  # 50-79%
+    LOW = "low"        # 0-49%
+
+
+class AIValidationResult(Base):
+    __tablename__ = "ai_validation_results"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    policy_id = Column(UUID(as_uuid=True), ForeignKey("policies.id"), nullable=False, index=True)
+    audit_requirement_id = Column(UUID(as_uuid=True), ForeignKey("audit_requirements.id"), nullable=False, index=True)
+    requirement_text = Column(Text, nullable=False)
+    regulation_reference = Column(String(255), nullable=False)
+    
+    # AI Assessment Results
+    compliance_rating = Column(Enum(AIValidationComplianceRating), nullable=False, index=True)
+    confidence_level = Column(Enum(AIValidationConfidenceLevel), nullable=False, index=True)
+    confidence_score = Column(DECIMAL(5, 2), nullable=False)  # 0-100
+    
+    # Detailed Analysis
+    reasoning = Column(Text)
+    specific_findings = Column(JSONB)  # Array of strings
+    missing_elements = Column(JSONB)  # Array of strings  
+    policy_strengths = Column(JSONB)  # Array of strings
+    recommendations = Column(JSONB)  # Array of strings
+    relevant_policy_excerpts = Column(JSONB)  # Array of strings
+    regulatory_interpretation = Column(Text)
+    risk_assessment = Column(Text)
+    priority_level = Column(String(20), index=True)  # high, medium, low
+    
+    # Metadata
+    ai_model_version = Column(String(50), default="gpt-4o")
+    validation_date = Column(TIMESTAMP(timezone=True), server_default=func.now(), index=True)
+    processing_time_ms = Column(Integer)  # Time taken for AI analysis
+    token_usage = Column(Integer)  # Tokens consumed
+    
+    # Review and Override
+    is_human_reviewed = Column(Boolean, default=False, index=True)
+    human_review_notes = Column(Text)
+    human_override_rating = Column(Enum(AIValidationComplianceRating))
+    reviewed_by = Column(String(255))
+    reviewed_at = Column(TIMESTAMP(timezone=True))
+    
+    # Audit trail
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    # Relationships
+    policy = relationship("Policy", backref="ai_validations")
+    audit_requirement = relationship("AuditRequirement", backref="ai_validations")

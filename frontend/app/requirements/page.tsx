@@ -70,24 +70,16 @@ export default function RequirementsDashboard() {
 
   useEffect(() => {
     fetchDetailedCoverage();
-  }, [filterType, filterAPL]);
+  }, []); // Only fetch once on mount
 
   const fetchDetailedCoverage = async () => {
     try {
       setLoading(true);
-      let url = 'http://localhost:8001/api/v2/coverage/detailed';
-      const params = new URLSearchParams();
+      const url = 'http://localhost:8001/api/v2/coverage/detailed';
       
-      if (filterType !== 'all') params.append('coverage_type', filterType);
-      if (filterAPL !== 'all') params.append('apl_code', filterAPL);
-      
-      if (params.toString()) url += '?' + params.toString();
-      
-      console.log('Fetching:', url); // Debug log
       const response = await fetch(url);
       if (!response.ok) throw new Error('Failed to fetch coverage data');
       const data = await response.json();
-      console.log('Received:', data.total_requirements, 'requirements'); // Debug log
       setCoverage(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load coverage data');
@@ -161,7 +153,18 @@ export default function RequirementsDashboard() {
 
   if (!coverage) return null;
 
-  const uniqueAPLs = [...new Set(coverage.assessments.map(a => a.apl_code))].sort();
+  // Filter assessments based on client-side filters
+  const filteredAssessments = coverage.assessments.filter(req => {
+    // Filter by coverage type
+    if (filterType !== 'all' && req.coverage_type !== filterType) return false;
+    
+    // Filter by APL code
+    if (filterAPL !== 'all' && req.apl_code !== filterAPL) return false;
+    
+    return true;
+  });
+
+  const uniqueAPLs = [...new Set(coverage.assessments.map(a => a.apl_code).filter(Boolean))].sort();
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
@@ -181,7 +184,7 @@ export default function RequirementsDashboard() {
               <CardTitle className="text-sm">Total</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{coverage.total_requirements}</div>
+              <div className="text-2xl font-bold">{filteredAssessments.length}</div>
             </CardContent>
           </Card>
           
@@ -345,14 +348,18 @@ export default function RequirementsDashboard() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {coverage.assessments
+                  {filteredAssessments
                     .sort((a, b) => {
-                      // First sort by APL code
-                      const aplComparison = a.apl_code.localeCompare(b.apl_code);
+                      // First sort by APL code with null safety
+                      const aplA = a.apl_code || '';
+                      const aplB = b.apl_code || '';
+                      const aplComparison = aplA.localeCompare(aplB);
                       if (aplComparison !== 0) return aplComparison;
                       
-                      // Then sort by section
-                      return a.section.localeCompare(b.section, undefined, {
+                      // Then sort by section with null safety
+                      const sectionA = a.section || '';
+                      const sectionB = b.section || '';
+                      return sectionA.localeCompare(sectionB, undefined, {
                         numeric: true,
                         sensitivity: 'base'
                       });
